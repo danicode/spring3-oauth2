@@ -7,15 +7,15 @@ import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.UUID;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.oidc.OidcScopes;
@@ -27,7 +27,6 @@ import org.springframework.security.oauth2.server.authorization.config.annotatio
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
@@ -40,8 +39,12 @@ import com.nimbusds.jose.proc.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
 
 @Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
 @Slf4j
 public class AuthorizationSecurityConfig {
+
+	private final PasswordEncoder passwordEncoder;
 
 	@Bean
 	@Order(1)
@@ -65,36 +68,26 @@ public class AuthorizationSecurityConfig {
 	@Bean
 	@Order(2)
 	public SecurityFilterChain webSecurityChain(HttpSecurity http) throws Exception {
-		http.authorizeHttpRequests((authorize) -> authorize.anyRequest().authenticated())
+		http.authorizeHttpRequests((auth) -> auth.requestMatchers("/auth/**").permitAll().anyRequest().authenticated())
 				// Form login handles the redirect to the login page from the
 				// authorization server filter chain
 				.formLogin(Customizer.withDefaults());
+		http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**"));
+
 		return http.build();
-	}
-	
-	@Bean 
-	public UserDetailsService userDetailsService() {
-		UserDetails userDetails = User.withUsername("user")
-				.password("{noop}user")
-				.authorities("ROLE_USER")
-				.build();
-		return new InMemoryUserDetailsManager(userDetails);
 	}
 	
 	@Bean 
 	public RegisteredClientRepository registeredClientRepository() {
 		RegisteredClient registeredClient = RegisteredClient.withId(UUID.randomUUID().toString())
 				.clientId("client")
-				.clientSecret("{noop}secret")
+				.clientSecret(passwordEncoder.encode("secret"))
 				.clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
 				.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
 				.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
 				.authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
-				//.redirectUri("http://127.0.0.1:8080/login/oauth2/code/oidc-client")
 				.redirectUri("https://oauthdebugger.com/debug")
-				//.postLogoutRedirectUri("http://127.0.0.1:8080/")
 				.scope(OidcScopes.OPENID)
-				//.scope(OidcScopes.PROFILE)
 				.clientSettings(clientSettings())
 				.build();
 		return new InMemoryRegisteredClientRepository(registeredClient);
