@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.danicode.authorizationserver.service.ClientService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,6 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthorizationSecurityConfig {
 
 	private final PasswordEncoder passwordEncoder;
+	private final ClientService clientService;
 
 	@Bean
 	@Order(1)
@@ -74,11 +76,11 @@ public class AuthorizationSecurityConfig {
 	@Bean
 	@Order(2)
 	public SecurityFilterChain webSecurityChain(HttpSecurity http) throws Exception {
-		http.authorizeHttpRequests((auth) -> auth.requestMatchers("/auth/**").permitAll().anyRequest().authenticated())
+		http.authorizeHttpRequests((auth) -> auth.requestMatchers("/auth/**", "/client/**").permitAll().anyRequest().authenticated())
 				// Form login handles the redirect to the login page from the
 				// authorization server filter chain
 				.formLogin(Customizer.withDefaults());
-		http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**"));
+		http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/client/**"));
 
 		return http.build();
 	}
