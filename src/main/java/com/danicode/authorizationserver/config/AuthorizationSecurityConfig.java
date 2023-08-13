@@ -9,9 +9,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.danicode.authorizationserver.federated.FederatedIdentityAuthenticationSuccessHandler;
+import com.danicode.authorizationserver.federated.FederatedIdentityConfigurer;
+import com.danicode.authorizationserver.federated.UserRepositoryOAuth2UserHandler;
+import com.danicode.authorizationserver.repository.GoogleUserRepository;
 import com.danicode.authorizationserver.service.ClientService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -24,17 +27,9 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.core.AuthorizationGrantType;
-import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
-import org.springframework.security.oauth2.core.oidc.OidcScopes;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService;
-import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService;
 import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
-import org.springframework.security.oauth2.server.authorization.client.InMemoryRegisteredClientRepository;
-import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
-import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
@@ -42,6 +37,7 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
@@ -61,6 +57,7 @@ public class AuthorizationSecurityConfig {
 
 	private final PasswordEncoder passwordEncoder;
 	private final ClientService clientService;
+	private final GoogleUserRepository googleUserRepository;
 
 	@Bean
 	@Order(1)
@@ -75,7 +72,7 @@ public class AuthorizationSecurityConfig {
 		// Oauth2 proceso de autorización
 		http.exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
 				new LoginUrlAuthenticationEntryPoint("/login"),
-				new MediaTypeRequestMatcher(MediaType.APPLICATION_JSON)
+				new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
 		)).oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()));
 		return http.build();
 	}
@@ -85,15 +82,25 @@ public class AuthorizationSecurityConfig {
 	public SecurityFilterChain webSecurityChain(HttpSecurity http) throws Exception {
 		http.cors(Customizer.withDefaults());
 		http.csrf(csrf -> csrf.ignoringRequestMatchers("/auth/**", "/client/**", "/login"));
+		FederatedIdentityConfigurer federatedIdentityConfigurer = new FederatedIdentityConfigurer()
+				.oauth2UserHandler(new UserRepositoryOAuth2UserHandler(googleUserRepository));
 		http.authorizeHttpRequests((auth) -> auth
 						.requestMatchers("/auth/**", "/client/**", "/login").permitAll()
 						.anyRequest().authenticated())
 				// Form login handles the redirect to the login page from the
 				// authorization server filter chain
 				.formLogin(login -> login.loginPage("/login"));
-		http.logout(logout -> logout.logoutSuccessUrl("http://localhost:4200/logout"));
+		http.logout(logout -> logout.logoutSuccessUrl("http://localhost:4200/logout"))
+		.oauth2Login(login -> login.loginPage("/login")
+				.successHandler(authenticationSuccessHandler())
+		)
+		.apply(federatedIdentityConfigurer);
 
 		return http.build();
+	}
+
+	private AuthenticationSuccessHandler authenticationSuccessHandler() {
+		return new FederatedIdentityAuthenticationSuccessHandler();
 	}
 
 	@Bean
